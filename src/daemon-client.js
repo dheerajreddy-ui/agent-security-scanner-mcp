@@ -198,6 +198,16 @@ class DaemonClient {
     return resp.result;
   }
 
+  async scanPromptInjection(text, previousMessages = []) {
+    await this.ensureRunning();
+    const resp = await this._send({
+      action: 'scan_prompt_injection',
+      text,
+      previous_messages: previousMessages,
+    });
+    return resp.result;
+  }
+
   async health() {
     await this.ensureRunning();
     const resp = await this._send({ action: 'health' });
@@ -228,6 +238,14 @@ export function getDaemonClient() {
 export async function shutdownDaemon() {
   if (_instance) {
     await _instance.shutdown();
+    _instance = null;
+  }
+}
+
+/** Synchronous kill — safe to call from process 'exit' handler. */
+export function shutdownDaemonSync() {
+  if (_instance) {
+    _instance._cleanup();
     _instance = null;
   }
 }

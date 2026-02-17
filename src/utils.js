@@ -4,7 +4,7 @@ import { readFileSync, existsSync } from "fs";
 import { dirname, join, extname, basename } from "path";
 import { fileURLToPath } from "url";
 import { FIX_TEMPLATES } from './fix-patterns.js';
-import { getDaemonClient, shutdownDaemon } from './daemon-client.js';
+import { getDaemonClient, shutdownDaemon, shutdownDaemonSync } from './daemon-client.js';
 
 // Handle both ESM and CJS bundling (Smithery bundles to CJS)
 let __dirname;
@@ -122,7 +122,7 @@ export async function runCrossFileAnalyzerAsync(filePaths) {
   return runCrossFileAnalyzer(filePaths);
 }
 
-export { shutdownDaemon };
+export { shutdownDaemon, shutdownDaemonSync };
 
 // Patterns that indicate an unsafe fix (user input still concatenated into dangerous sinks)
 const UNSAFE_FIX_PATTERNS = [
@@ -206,6 +206,88 @@ export function generateFix(issue, line, language) {
     original: line,
     fixed: null
   };
+}
+
+// Check if a file path looks like a test/fixture/mock file
+export function isTestFile(filePath) {
+  const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+  const testPatterns = [
+    '/test/', '/tests/', '/__tests__/', '/spec/', '/specs/',
+    '/__mocks__/', '/__fixtures__/', '/fixtures/', '/mocks/',
+    '/testing/', '/testdata/', '/test-data/',
+  ];
+  const suffixPatterns = [
+    '.test.', '.spec.', '_test.', '_spec.',
+    '.tests.', '.specs.',
+  ];
+  if (testPatterns.some(p => normalized.includes(p))) return true;
+  const base = normalized.split('/').pop();
+  if (suffixPatterns.some(p => base.includes(p))) return true;
+  if (base.startsWith('test_') || base.startsWith('test-')) return true;
+  return false;
+}
+
+// Extract import/require statements from source code
+export function extractImports(content, language) {
+  const imports = [];
+  const lines = content.split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    switch (language) {
+      case 'javascript':
+      case 'typescript': {
+        // ES imports: import X from 'pkg', import { X } from 'pkg'
+        const esMatch = trimmed.match(/import\s+.*?\s+from\s+['"]([^'"]+)['"]/);
+        if (esMatch) { imports.push(esMatch[1]); break; }
+        // Side-effect imports: import 'pkg'
+        const sideMatch = trimmed.match(/import\s+['"]([^'"]+)['"]/);
+        if (sideMatch) { imports.push(sideMatch[1]); break; }
+        // Dynamic imports: import('pkg')
+        const dynMatch = trimmed.match(/import\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+        if (dynMatch) { imports.push(dynMatch[1]); break; }
+        // CJS require: require('pkg')
+        const reqMatch = trimmed.match(/require\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+        if (reqMatch) { imports.push(reqMatch[1]); break; }
+        break;
+      }
+      case 'python': {
+        // import pkg / import pkg.sub
+        const impMatch = trimmed.match(/^import\s+([a-zA-Z_][\w.]*)/);
+        if (impMatch) { imports.push(impMatch[1].split('.')[0]); break; }
+        // from pkg import X
+        const fromMatch = trimmed.match(/^from\s+([a-zA-Z_][\w.]*)\s+import/);
+        if (fromMatch) { imports.push(fromMatch[1].split('.')[0]); break; }
+        break;
+      }
+      case 'go': {
+        // "github.com/pkg/name"
+        const goMatch = trimmed.match(/["']([^"']+)["']/);
+        if (goMatch && (trimmed.startsWith('"') || trimmed.startsWith('_') || /^\w/.test(trimmed))) {
+          imports.push(goMatch[1]);
+        }
+        break;
+      }
+      case 'ruby': {
+        // require 'pkg' / require_relative 'pkg'
+        const rbMatch = trimmed.match(/require(?:_relative)?\s+['"]([^'"]+)['"]/);
+        if (rbMatch) { imports.push(rbMatch[1]); break; }
+        // gem 'pkg'
+        const gemMatch = trimmed.match(/gem\s+['"]([^'"]+)['"]/);
+        if (gemMatch) { imports.push(gemMatch[1]); break; }
+        break;
+      }
+      case 'java': {
+        // import com.example.pkg;
+        const javaMatch = trimmed.match(/^import\s+(?:static\s+)?([a-zA-Z][\w.]*)/);
+        if (javaMatch) { imports.push(javaMatch[1]); break; }
+        break;
+      }
+    }
+  }
+
+  return [...new Set(imports)];
 }
 
 // Run cross-file taint analysis

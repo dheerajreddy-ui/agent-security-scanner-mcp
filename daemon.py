@@ -122,6 +122,22 @@ def handle_cross_file_analyze(req):
         return {'success': False, 'error': str(e)}
 
 
+def handle_scan_prompt_injection(req):
+    """Stub for semantic prompt-injection scanning (Phase 4: ONNX embeddings).
+
+    Currently returns empty findings. When the embedding engine is built,
+    this action will run semantic similarity checks in-process.
+    """
+    return {
+        'success': True,
+        'result': {
+            'findings': [],
+            'engine': 'none',
+            'note': 'Semantic engine not yet available',
+        }
+    }
+
+
 def handle_health():
     return {
         'success': True,
@@ -168,6 +184,8 @@ def main():
             resp = handle_analyze(req)
         elif action == 'cross_file_analyze':
             resp = handle_cross_file_analyze(req)
+        elif action == 'scan_prompt_injection':
+            resp = handle_scan_prompt_injection(req)
         else:
             resp = {'success': False, 'error': f'Unknown action: {action}'}
 

@@ -3,6 +3,7 @@ import { readFileSync, existsSync, writeFileSync, copyFileSync, mkdirSync } from
 import { dirname, join } from "path";
 import { homedir, platform } from "os";
 import { fileURLToPath } from "url";
+import { getDaemonClient } from '../daemon-client.js';
 
 // Handle both ESM and CJS bundling (Smithery bundles to CJS)
 let __dirname;
@@ -150,10 +151,22 @@ export async function runDoctor(args) {
     issues++;
   }
 
-  // 3b. daemon.py reachable
+  // 3b. daemon.py reachable + live health check
   const daemonPath = join(__dirname, '..', '..', 'daemon.py');
   if (existsSync(daemonPath)) {
     console.log(`    \u2713 daemon.py found`);
+    // Live health check — verify daemon actually starts and responds
+    if (pythonCmd) {
+      try {
+        const client = getDaemonClient();
+        const health = await client.health();
+        console.log(`    \u2713 Daemon healthy (pid=${health.pid}, cache=${health.cache_size}, uptime=${health.uptime.toFixed(1)}s)`);
+        await client.shutdown();
+      } catch (err) {
+        console.log(`    \u26a0 Daemon failed to respond: ${err.message}`);
+        console.log(`      (sync fallback will be used — this is non-fatal)`);
+      }
+    }
   } else {
     console.log(`    \u26a0 daemon.py not found (daemon mode unavailable, sync fallback will be used)`);
   }

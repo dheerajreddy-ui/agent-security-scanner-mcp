@@ -11,7 +11,7 @@ import { homedir, platform } from "os";
 import { createInterface } from "readline";
 import { createHash } from "crypto";
 import { envVarReplacement, FIX_TEMPLATES } from './src/fix-patterns.js';
-import { detectLanguage, runAnalyzer, generateFix, toSarif, shutdownDaemon } from './src/utils.js';
+import { detectLanguage, runAnalyzer, generateFix, toSarif, shutdownDaemon, shutdownDaemonSync } from './src/utils.js';
 import { scanSecuritySchema, scanSecurity } from './src/tools/scan-security.js';
 import { fixSecuritySchema, fixSecurity } from './src/tools/fix-security.js';
 import { loadPackageLists, checkPackageSchema, checkPackage, getPackageStats } from './src/tools/check-package.js';
@@ -184,6 +184,9 @@ server.tool(
 // CLI COMMANDS - Extracted to src/cli/
 // ===========================================
 // See src/cli/init.js, src/cli/doctor.js, src/cli/demo.js
+
+// Ensure daemon child process is cleaned up on exit (covers all CLI paths)
+process.on('exit', () => shutdownDaemonSync());
 
 // Handle CLI arguments before loading heavy package data
 const cliArgs = process.argv.slice(2);
